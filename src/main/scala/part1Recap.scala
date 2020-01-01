@@ -1,4 +1,4 @@
 object part1Recap extends App {
 
-  val
+  val x = 1
 }
