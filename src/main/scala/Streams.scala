@@ -72,6 +72,13 @@ class Cons[+A](hd: A, tl: => MyStream[A]) extends MyStream[A] {
     - new Cons(head, tail ++ anotherStream) -> new Cons(head, this.tail
     - //[1,2] ++ [3,4,5] => new Cons(1, new Cons(2, Empty ++ [3,4,5])) => new Cons(1, new Cons(2, new Cons(3, new Cons(4, new Cons(5, Empty))
     - very important to call by name to delay the evaluation of the right side; e.g. delay evaluation of tail.flatMap(f)
+
+    - tail ++ anotherStream is a recursive call, which evaluates to:
+      - [1 2 3] ++ [7 8 9]
+      - new Cons(1, [2 3] ++ [7 8 8]
+      - new Cons(1, new Cons(2, [3] ++ [7 8 9]
+      - new Cons(1, new Cons(2, new Cons(3, [] ++ [7 8 9])) // calls the empty stream method, which returns another stream
+      - new Cons(1, new Cons(2, new Cons(3, [7 8 9]))
    */
   def ++[B >: A](anotherStream: => MyStream[B]): MyStream[B] = new Cons(head, tail ++ anotherStream)
 
