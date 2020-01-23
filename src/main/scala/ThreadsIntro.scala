@@ -76,4 +76,157 @@ object ThreadsIntro extends App {
   // this one is tricky though: it runs before everything else...
   // ...if you comment out the shutDownNow and run isShutdown, it will return if the pool had previously been shut down
   pool.isShutdown
+
+
+  /* let's illustrate pain point where we write to x from two different threads */
+  def runInParallel: Unit = {
+    var x = 0
+
+    val thread1 = new Thread(() => {
+      x = 1
+    })
+    val thread2 = new Thread(() => {
+      x = 2
+    })
+
+    thread1.start()
+    thread2.start()
+    println(x)
+  }
+
+  // in most cases we get 0, which means println executed before the threads actually ran (but this is not always the case)
+  // so...not ideal
+  // this is called a `race condition`: two threads are attempting to reset the same memory zone at the same time
+  for (_ <- 1 to 100) runInParallel
+
+  // another example of race condition
+  class BankAccount(var amount: Int) {
+    override def toString: String = "" + amount
+  }
+
+  def buy(account: BankAccount, thing: String, price: Int): Unit = {
+    account.amount -= price
+    println("I've bought " + thing)
+    println("my account is now " + account)
+  }
+
+
+  // we had one record with 46k, which means user bought both shoes and iphone
+  // how could this happen? both threads started with 50k, thread1 finishes first, then thread2
+  for (_ <- 1 to 10000) {
+    val account = new BankAccount(50000)
+    val thread1 = new Thread(() => buy(account, "shoes", 3000))
+    val thread2 = new Thread(() => buy(account, "iPhone", 4000))
+
+    thread1.start()
+    thread2.start()
+    Thread.sleep(10)
+    if (account.amount != 43000) println("aha: " + account.amount)
+  }
+
+  // Java & JVM have tools for us to battle race conditions
+  // option one is more powerful and more used; allows you to put more stuff in same synchronized block
+  /* #option #1: use synchronized()
+    - is a method on reference types
+    - if you do same test above with buySafe, not going to see any more weirdness
+   */
+  def buySpace(account: BankAccount, thing: String, price: Int): Unit = {
+    // takes type param T and a value of type T
+    account.synchronized {
+      // no two threads can evaluate the parameter that I'm passing to synchronized at the same time
+      account.amount -= price
+      println("I've bought " + thing)
+      println("my account is now " + account)
+    }
+  }
+
+  /* #option #2: use @volatile
+    - annotation for a var: means that all reads and writes to it are synchronized
+   */
+  class BankAccount2(@volatile var amount: Int) {
+    override def toString: String = "" + amount
+  }
+
+
+  // construct inception threads (1-50); thread1 -> thread2 -> thread3 -> ...
+  // print(hello from thread x) in reverse order
+  def inceptionThreads(maxThreads: Int, i: Int = 1): Thread = {
+    new Thread(() => {
+      if (i < maxThreads) {
+        val newThread = inceptionThreads(maxThreads, i + 1)
+        newThread.start() // start it
+        newThread.join() // wait for it to finish
+      }
+      println(s"hello from thread $i")
+    })
+  }
+
+  inceptionThreads(50).start()
+
+
+  // what is the biggest possible value for x? what is the smallest possible?
+  // answers: 100 (all threads can act sequentially), 1 (for 1, all threads can act in parallel)
+  var x = 0
+  val threads = (1 to 100).map(_ => new Thread(() => x += 1))
+  threads.foreach(_.start())
+
+
+  // sleep fallacy; whats the value of message? is it guaranteed?
+  // NOTE: sleep yields CPU for AT LEAST that many milliseconds
+  // this is a bad practice (synchronizing threads by putting them to sleep at different times)
+  // if you put a thread to sleep for a sec, and another for 2 sec, it does not mean that the operations would be executed in that order
+  // value of messages will almost always be 'scala is awesome', but it is not guaranteed
+  /* execution might go like this:
+
+  (main thread)
+    message = "Scala sucks"
+    awesomeThread.start()
+    sleep(2000) - relieves execution, frees CPU to execute some other thread at the discretion of the OS
+  (awesome thread)
+    gets the CPU
+    sleep(1000) - also relieves execution
+    at this point, the OS is free to choose some running thread on the OS
+  (OS gives the CPU to some important thread, which takes CPU more than 2 seconds)
+    after important thread has finished running, the OS gives back the CPU to our program
+    at this point, both the main thread and the awesome thread have finished sleeping
+    OS gives CPU back to main thread, not to awesome thread
+    println executes
+  (OS gives cpu to awesome thread)
+    message = scala is awesome (but by this
+  */
+  var message = ""
+  val awesomeThread = new Thread(() => {
+    Thread.sleep(1000)
+    message = "Scala is awesome"
+  })
+
+  message = "Scala sucks"
+  awesomeThread.start()
+  Thread.sleep(2000)
+  println(message)
+
+
+  // how do we fix the above?
+  // synchronizing doesn't work here: synchronizing is only useful for concurrent modifications
+  // i.e. if two threads are attempting to modify message at the same time, then sync can work
+  // here we have a sequential problem; the only solution is to have threads join
+
+//  var message = ""
+//  val awesomeThread = new Thread(() => {
+//    Thread.sleep(1000)
+//    message = "Scala is awesome"
+//  })
+//
+//  message = "Scala sucks"
+//  awesomeThread.start()
+//  Thread.sleep(2000)
+  //awesomeThread.join() // wait for awesomeThread to join
+//  println(message)
+
+
+
+
+
+
+
 }
