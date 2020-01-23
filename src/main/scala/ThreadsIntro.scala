@@ -130,7 +130,7 @@ object ThreadsIntro extends App {
     - is a method on reference types
     - if you do same test above with buySafe, not going to see any more weirdness
    */
-  def buySpace(account: BankAccount, thing: String, price: Int): Unit = {
+  def buySafe(account: BankAccount, thing: String, price: Int): Unit = {
     // takes type param T and a value of type T
     account.synchronized {
       // no two threads can evaluate the parameter that I'm passing to synchronized at the same time
