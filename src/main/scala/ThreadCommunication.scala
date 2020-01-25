@@ -1,3 +1,5 @@
+
+
 object ThreadCommunication extends App {
 
   // with the tools we know so far, we cannot really enforce a certain order of exec. on threads
@@ -122,5 +124,286 @@ object ThreadCommunication extends App {
     consumer.start()
     producer.start()
   }
+
+
+
+  /*
+    Level 2
+    - let's say, instead of a container, we have a buffer where producers can produce values and can consumer can consumer values
+    - producer produces a value inside one of 3 spots and consumer extracts any value which is new inside this buffer
+    - this is more complex because now we have many values and the process can run indefinitely
+
+    - technically speaking: in this scenario, both the consumer and producer should be able to block each other
+    - e.g. if buffer is full (i.e. producer has produced enough to fill), producer must block until consumer has finishes extracting some values
+    - e.g. if buffer is empty, consumer must block until producer can produce some more
+
+    producer --> [ ? ? ? ] --> consumer
+   */
+
+  import scala.collection.mutable
+  import scala.util.Random
+  def prodConsLargeBuffer(): Unit = {
+    val buffer: mutable.Queue[Int] = new mutable.Queue[Int]
+    val capacity = 3
+
+    // both of our threads will run forever here
+    // consumer tries to pull value and print and then simulate some computation
+    val consumer = new Thread(() => {
+      val random = new Random()
+
+      while(true) {
+        buffer.synchronized {
+          if (buffer.isEmpty) {
+            println("[consumer] buffer empty waiting...")
+            buffer.wait()
+          }
+
+          // there must be at least one value in queue
+          val x = buffer.dequeue()
+          println("[consumer] consumed " + x)
+
+          // hey producer, there's some space now (if you happened to be sleeping)
+          buffer.notify() // consumer has finishes extracting a value, so in the case that producer is sleeping (just in case), send a signal
+      }
+
+      Thread.sleep(random.nextInt(500))
+    }
+  })
+
+    val producer = new Thread(() => {
+      val random = new Random()
+      var i = 0
+
+      while(true) {
+        buffer.synchronized {
+          if (buffer.size == capacity) {
+            println("[producer] buffer is full")
+            buffer.wait()
+          }
+
+          // there must be at least one empty slot in queue
+          println("[producer] producing" + i)
+          buffer.enqueue(i)
+
+          // hey consumer, new food for you!
+          buffer.notify() // the producer after producing a value, in the case that consumer is sleeping, notify it
+
+          i += 1
+        }
+
+        Thread.sleep(random.nextInt(500))
+      }
+    })
+
+    consumer.start()
+    producer.start()
+}
+
+  prodConsLargeBuffer()
+
+
+
+  /*
+    prodCons level 3
+    - we have limited capacity buffer but we have multiple producers and multiple consumers
+    - don't necessarily have 1-for-1 ratio of producers and consumers
+
+
+    producer1 -> [ ? ? ? ] -> consumer1
+    producer2 -----^ ^------- consumer2
+   */
+
+  class Consumer(id: Int, buffer: mutable.Queue[Int]) extends Thread {
+    // overriding run method; is originally from runnable trait and over-ridden in Thread
+    // when we override run in something extending Thread, we override the run definition
+    // when we supply our own runnable to a thread, we are overriding the Runnable interface/trait's method
+    // same behavior with different stuff under the hood making it tick
+    override def run(): Unit = {
+      val random = new Random()
+
+      while(true) {
+        buffer.synchronized {
+          /*
+          scenario:
+            - producer produced a value, and two consumers are waiting
+            - producer calls notify, which notifies consumer TWO
+            - consumer ONE gets out of the wait, dequeues the only value in the buffer, prints, then notifies
+            - issue: buffer.notify signals a thread that they can operate on buffer, but this might be another consumer (and queue is now empty)
+            - let's say consumer TWO gets the notify; it starts at x and tries to dequeue, but buffer is empty
+            - replace `if buffer.empty` with `while buffer.empty`
+           */
+          while (buffer.isEmpty) {
+            println(s"[consumer_$id] buffer empty waiting...")
+            buffer.wait()
+          }
+
+          // there must be at least one value in queue
+          val x = buffer.dequeue()
+          println(s"[consumer_$id] consumed " + x)
+
+          // hey somebody, there's some space now (if you happened to be sleeping)
+          buffer.notify()
+        }
+
+        Thread.sleep(random.nextInt(500))
+      }
+    }
+  }
+
+
+  class Producer(id: Int, buffer: mutable.Queue[Int], capacity: Int) extends Thread {
+    override def run(): Unit = {
+      val random = new Random()
+      var i = 0
+
+      /*
+        one consumer and two producers (reverse of the consumer issue)
+          - producer ONE produces an element, queue is full
+          - goes to wait, releases lock
+          - producer TWO gets the monitor; goes through if statement because queue is full and waits
+          - wait brings back producer ONE, which also hits the wait
+          - wait signals producer TWO, which is waiting; it then tries to enqueue and now our queue is larger than our capacity
+          - which if with while to check if size == capacity
+       */
+      while(true) {
+        buffer.synchronized {
+          while (buffer.size == capacity) {
+            println(s"[producer_$id] buffer is full")
+            buffer.wait()
+          }
+
+          // there must be at least one empty slot in queue
+          println(s"[producer_$id] producing" + i)
+          buffer.enqueue(i)
+
+          // hey someone, new food for you!
+          buffer.notify()
+
+          i += 1
+        }
+
+        Thread.sleep(random.nextInt(500))
+      }
+    }
+  }
+
+
+  def multiProdCons(nConsumers: Int, nProducers: Int): Unit = {
+    val buffer: mutable.Queue[Int] = new mutable.Queue[Int]
+    val capacity = 3
+
+    (1 to nConsumers).foreach(i => new Consumer(i, buffer).start())
+    (1 to nProducers).foreach(i => new Producer(i, buffer, capacity).start())
+  }
+
+  multiProdCons(3, 3)
+
+
+  /******exercises
+    * 1) think of an example of when notifyAll acts different than notify
+    *   - in our application above, it wouldn't matter if we used notifyAll()
+    *
+    * 2) create a deadlock: a situation where one thread or multiple threads block eachother and they can not continue
+    * 3) live lock: a situation where threads cannot continue because they yield execution to eachother in such a way that nobody can continue
+    *   - the threads are active, they are not blocked, but they can not continue
+  **************/
+
+  // 1 - notifyAll
+  def testNotifyAll(): Unit = {
+    val bell = new Object
+
+    (1 to 10).foreach(i => new Thread(() => {
+      bell.synchronized {
+        println(s"[thread $i] waiting ...")
+        bell.wait()
+        println(s"[thread $i] hooray")
+      }
+    }).start())
+
+    new Thread(() => {
+      Thread.sleep(2000)
+      println("[announcer] Rock n Roll")
+      bell.synchronized {
+        notifyAll()
+      }
+    })
+  }
+  // there will be 10 waitings, then 1 rocjk n roll, then 10 hooray printed (in that order)
+  // if instead of notifyAll we used notify, only one thread will wake up to say hooray (and program will actually continue running, with the 9 threads being blocked)
+  testNotifyAll()
+
+  // 2- deadlock
+  // let's imagine a small imaginery society where people salute by bowing
+  // when someone bows to you, you bow to them; you only rise when other person has started rising
+  // if other person follows same rule, no one will ever rise
+
+  case class Friend(name: String) {
+    def bow(other: Friend): Unit = {
+      this.synchronized {
+        println(s"$this: I am bowing to my friend $other")
+        other.rise(this)
+        println(s"$this: my friend $other has risen")
+      }
+    }
+
+    def rise(other: Friend): Unit = {
+      this.synchronized {
+        println(s"$this: I am rising to my friend $other")
+      }
+    }
+
+    var side = "right"
+    def switchSide(): Unit = {
+      if (side == "right") side = "left"
+      else side = "right"
+    }
+
+    def pass(other: Friend): Unit = {
+      while(this.side == other.side) {
+        println(s"$this: Oh but please, $other, feel free to pass")
+        switchSide()
+        Thread.sleep(1000)
+      }
+    }
+  }
+
+  val sam = Friend("Sam")
+  val pierre = Friend("Pierre")
+
+  // the bow method can't make the other person rise because it is locked by the thread
+  new Thread(() => sam.bow(pierre)).start() // sam's lock, | then pierre's lock
+  new Thread(() => pierre.bow(sam)).start() // pierre's lock, | then sam's lock
+
+
+  // 3 - livelock
+  /* scenario:
+    - very polite society
+    - there is a road with 2 sides
+    - if you bump into someone, you are polite so you move to the other side\
+    - if you run, it will keep on going forever; keeps printing
+    - no threads are blocked, but no threads can continue running
+   */
+  new Thread(() => sam.pass(pierre)).start()
+  new Thread(() => pierre.pass(sam)).start()
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 }
