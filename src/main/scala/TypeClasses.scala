@@ -71,14 +71,34 @@ object TypeClasses extends App {
       - e.g. if it is known that a type belongs to an Ordering type class, then it is known that instances of that class have the ability to compare values
    */
 
+  // updated this template at end of lessons with all we know
   trait MyTypeClassTemplate[T] {
     def action(value: T): String
   }
 
-  // Equality type class
+  object MyTypeClassTemplate {
+    def apply[T](implicit instance: MyTypeClassTemplate[T]): MyTypeClassTemplate[T] = instance
+
+    def action[T](value: T)(implicit myTypeClassTemplate: MyTypeClassTemplate[T]): String =
+      myTypeClassTemplate.action(value)
+  }
+
+  // Equality type class v1
   trait Equal[T] {
     def apply(a: T, b: T): Boolean
   }
+
+  object Equal {
+    def apply[T](a: T, b: T)(implicit equalizer: Equal[T]): Boolean = equalizer.apply(a, b)
+  }
+
+  // could do this if either of the objects below were implicits
+  println(
+    Equal(
+      new User("a", 1, "b"),
+      new User("a", 1, "b")
+    )
+  )
 
   object NameEquality extends Equal[User] {
     override def apply(a: User, b: User): Boolean = a.name == b.name
@@ -87,5 +107,48 @@ object TypeClasses extends App {
   object FullEquality extends Equal[User] {
     override def apply(a: User, b: User): Boolean = a.name == b.name && a.age == b.age
   }
+
+
+  /*********Now we will provide implicit type class instances ***********/
+  // this is called AD-HOC polymorphism
+  // can call HTML Serializer on any type we want, so long as implicit is defined
+  // this is polymorphism because compiler fetches different object depending on type
+  object HTMLSerializer {
+    def serialize[T](value: T)(implicit serializer: HTMLSerializer[T]): String =
+      serializer.serialize(value)
+
+    def apply[T](implicit serializer: HTMLSerializer[T]) = serializer
+  }
+
+  implicit object IntSerializer extends HTMLSerializer[Int] {
+    override def serialize(value: Int): String = s"<div style: color=blue>$value</div>"
+  }
+
+  implicit object UserSerializer2 extends HTMLSerializer[User] {
+    override def serialize(value: User): String = s"<div style: color=blue>${value.name}</div>"
+  }
+
+  println(HTMLSerializer.serialize(42)(IntSerializer)) // need to do this if IntSerializer is not implicit
+  println(HTMLSerializer.serialize(42)) // can just do this if IntSerializer is implicit
+  println(HTMLSerializer.serialize(new User("John", 39, "fakeemail")))
+
+  // using apply
+  // advantage of this design is that once we say `HTMLSerializer[User]` we get access to the entire type class interface (e.g. maybe other methods aside from serialize)
+  println(HTMLSerializer[User].serialize(john))
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 }
