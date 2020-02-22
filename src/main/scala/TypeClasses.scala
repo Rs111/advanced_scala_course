@@ -137,12 +137,86 @@ object TypeClasses extends App {
   println(HTMLSerializer[User].serialize(john))
 
 
+  /*******part 3: type enrichment (pimp library ************/
+  // in context of type classes, type enrichment will allow us to invoke out type class pattern for any type for which we have an HTMLSerializer
+
+  implicit class HTMLEnrichment[T](value: T) {
+    def toHTML(implicit serializer: HTMLSerializer[T]): String = serializer.serialize(value)
+  }
+
+  println(john.toHTML(UserSerializer)) // compiled as: new HTMLEnrichment[User](john).toHTML(UserSerializer)
+  println(john.toHTML)
+
+  /* The above solves all of our earlier problems:
+  - can extend to new types (as long as we have an implict serializer
+  - can also implement more than one serializer for a given type; just import or create the implicit you want
+  - super expressive
+  - is Type safe; e.g. for EqualBetter exercise, compiler will tell you before running that bob == 42 is not valid; compiler prevents you from even compling the code
+
+  our construct now consists of:
+  - type class itself (i.e. HTMLSerializer trait, which says we can perform serialize on T)
+  - type class instances (some of which are implicit); UserSerializer or IntSerializer
+  - conversion with implicit classes (HTML Enrichment); this allows you to use type class instances as implicit parameters
+   */
+
+  // context bounds
+  // let's say in our backend we have a small method
+  def htmlBoilerplate[T](content: T)(implicit  serializer: HTMLSerializer[T]): String = {
+    s"<html><body> ${content.toHTML(serializer)}</body></html>"
+  }
+
+  // can re-write the above in a nicer way
+  // main difference: can't use serializer because `: HTMLSerializer` is a context bound which tells the compiler to inject an implicit parameter of type HTMLSerializer[T]
+  // the advantage is the super compact method signature
+  // disadvantage is that we can not use serializer by name because the compiler injects it for us
+  def htmlSugar[T : HTMLSerializer](content: T): String =
+    s"<html><body> ${content.toHTML}</body></html>"
+
+  // can also do this with implicetly
+  def htmlSugar2[T : HTMLSerializer](content: T): String = {
+    val serializer = implicitly[HTMLSerializer[T]]
+    s"<html><body> ${content.toHTML(serializer)}</body></html>"
+  }
+
+  // implicitly
+  // lets say someone creates default value for permissions for a social media
+  case class Permissions(mask: String)
+  implicit val defaultPermissions: Permissions = Permissions("0744")
+
+  // in some other part of the code, we want to surface what the default permissions are
+  // implicetly has a very simple implementation
+  val standardPerms = implicitly[Permissions]
 
 
+  /****Improve equal type class with an implicit conversion class ****/
+  // Equality type class v1
+  trait EqualBetter[T] {
+    def apply(a: T, b: T): Boolean
+  }
 
+  object EqualBetter {
+    def apply[T](a: T, b: T)(implicit equalizer: EqualBetter[T]): Boolean = equalizer.apply(a, b)
+  }
 
+  implicit object NameEqualityBetter extends EqualBetter[User] {
+    override def apply(a: User, b: User): Boolean = a.name == b.name
+  }
 
+  object FullEqualityBetter extends EqualBetter[User] {
+    override def apply(a: User, b: User): Boolean = a.name == b.name && a.age == b.age
+  }
 
+  implicit class EqualBetterEnrichment[T](a: T) {
+    def ==(b: T)(implicit equalityBetter: EqualBetter[T]): Boolean = equalityBetter(a, b)
+    def !=(b: T): Boolean = !(a == b)
+  }
+
+  val bob = new User("bob", 50, "123")
+  val bob2 = new User("bob2", 50, "123")
+
+  EqualBetter(bob, bob2)
+  bob == bob2
+  bob != bob2
 
 
 
