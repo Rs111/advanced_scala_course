@@ -108,14 +108,14 @@ object JSONSerialization extends App {
     ))
   }
 
-  implicit object FeedConverter extends JSONConverter[Feed] {
-    override def convert(value: Feed): JSONValue = JSONObject(Map(
-
-      // clunky; look at FeedConverterImproved
-      "user" -> UserConverter.convert(value.user),
-      "posts" -> JSONArray(value.posts.map(PostConverter.convert))
-    ))
-  }
+//  implicit object FeedConverter extends JSONConverter[Feed] {
+//    override def convert(value: Feed): JSONValue = JSONObject(Map(
+//
+//      // clunky; look at FeedConverterImproved
+//      "user" -> UserConverter.convert(value.user),
+//      "posts" -> JSONArray(value.posts.map(PostConverter.convert))
+//    ))
+//  }
 
   // 2.3 conversion
 
